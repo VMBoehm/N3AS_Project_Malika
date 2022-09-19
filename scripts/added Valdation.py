@@ -1,9 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[3]:
-
-
 ## all the imports all of them just increase 
 import torch
 import torchvision
@@ -26,16 +20,12 @@ import numpy as np
 import random
 
 
-# In[19]:
-
 
 from torch.utils.data import Dataset
 from torchvision import datasets
 from torchvision.transforms import ToTensor
 import matplotlib.pyplot as plt
 
-
-# In[78]:
 
 
 class MassiveNus(Dataset):
@@ -77,9 +67,6 @@ class MassiveNus(Dataset):
         return x.float(), torch.tensor(y).long()
 
 
-# In[79]:
-
-
 ## I am loading in the data
 SEED       = 123
 image_size = 512
@@ -95,10 +82,6 @@ valid_data   = MassiveNus(DATA_DIR,TRANSFORM_IMG, split='valid')
 valid_data_loader = DataLoader(valid_data, batch_size=BATCH_SIZE, shuffle=True,  num_workers=2)
 test_data   = MassiveNus(DATA_DIR,TRANSFORM_IMG, split='train')
 test_data_loader = DataLoader(test_data, batch_size=BATCH_SIZE, shuffle=True,  num_workers=2)
-# test_data         = torchvision.datasets.ImageFolder(root=DATA_DIR, transform=TRANSFORM_IMG)
-# test_data_loader  = DataLoader(test_data, batch_size=BATCH_SIZE, shuffle=True, num_workers=4) 
-
-## Adrains 
 
 class model_p(nn.Module):
     def __init__(self,  hidden=16, dr= 0.2):
@@ -177,51 +160,19 @@ class model_p(nn.Module):
         return x
 
 
-# In[ ]:
 
 
 from torchsummary import summary
-
-
-# In[ ]:
 
 
 torch.manual_seed(SEED)
 model = model_p().cuda()
 
 
-
-#summary(model,(1,512,512))
-
-
-# In[32]:
-
-
-# def binary_acc(y_pred, y_test):
-#     y_pred_tag = torch.round(torch.sigmoid(y_pred))
-
-#     correct_results_sum = (y_pred_tag == y_test).sum().float()
-#     acc = correct_results_sum/y_test.shape[0]
-#     acc = torch.round(acc * 100)
-
-#     return acc
-
-
-# In[33]:
-
-
-#loss_function = nn.BCELoss()  
-
 optimizer = torch.optim.Adam(model.parameters(),lr=1e-4)  
 
 
-# In[34]:
-
-
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-
-
-# In[35]:
 
 
 criterion = nn.BCEWithLogitsLoss()
@@ -229,20 +180,18 @@ criterion = nn.BCEWithLogitsLoss()
 epochs = 100
     
 
-
-# In[36]:
-
-
 np.random.seed(SEED)
 torch.manual_seed(SEED)
 losses = []
+valid_losses =[]
 accuracies =[]
+valid_accuracies = []
 for epoch in range(epochs):
  #    if 0:# epoch % 30 == 0 and epoch > 0:
  #        lr /= 10
     # training
     train_loss, train_acc, num_points = 0.0, 0.0, 0
-    vlad_loss, train_vlad_acc, num_vlad_points = 0.0, 0.0, 0
+    vlad_loss, vlad_acc, vlad_points = 0.0, 0.0, 0
     model.train()
     for n, (x,y) in enumerate(train_data_loader):
         y = torch.reshape(y.cuda(),(-1,1))
@@ -264,42 +213,29 @@ for epoch in range(epochs):
     print(train_loss, 'the loss')
     print(train_acc, 'the accuracy')
     
-    
-        for n, (x,y) in enumerate(valid_data_loader):
+    # VB: model needs to be set on evaluation mode, to change the behaviour of certain layers, e.g. dropout
+    model.eval()
+    for n, (x,y) in enumerate(valid_data_loader):
         y = torch.reshape(y.cuda(),(-1,1))
-        y_NN = model(x.cuda())
-        loss = criterion(y_NN, y.float())
+        # VB: turn off gradients
+        with torch.no_grad():
+            y_NN = model(x.cuda())
+            loss = criterion(y_NN, y.float())
         binary_pred = (torch.sigmoid(y_NN)>0.5).long()
         acc = torch.mean((y == binary_pred).float())
-        train_vlad_loss +=  loss.item()
-        train_vlad_acc  +=  acc.item()
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        vlad_loss +=  loss.item()
+        vlad_acc  +=  acc.item()
+        # VB: there should be no training in the evlaution!!! This is important. We only want to evaluate the model here 
+        # and not use the validation set to train it (otherwise the validation set become the training set)
+        # optimizer.zero_grad()
+        # loss.backward()
+        # optimizer.step()
 #        if n%20==0:
 #            print(train_loss/(n+1))
-    train_vlad_loss = train_vlad_loss/(n+1)
-    train_vlad_acc = train_vlad_acc/(n+1)
-    losses.append(train_vlad_loss)
-    accuracies.append(train_vlad_acc)
-    print(train_vlad_loss, 'the loss')
-    print(train_vlad_acc, 'the accuracy')
-    
-    
-
-
-# In[ ]:
-
-
-
- 
-
-
-# In[ ]:
-
-
-# In[ ]:
-
-
-
-
+    # VB: having train in the name didn't make sense. Removed it
+    vlad_loss = vlad_loss/(n+1)
+    vlad_acc = vlad_acc/(n+1)
+    valid_losses.append(vlad_loss)
+    valid_accuracies.append(vlad_acc)
+    print(vlad_loss, 'validation loss')
+    print(vlad_acc, 'validation accuracy')
